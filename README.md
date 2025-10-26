@@ -33,7 +33,7 @@ Follow these steps carefully:
 
 ```bash
 git clone https://github.com/NandishDPatel/robot-driver.git
-cd <project-folder>
+cd robot-driver
 
 ```
 
