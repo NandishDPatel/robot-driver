@@ -42,7 +42,7 @@ cd robot-driver
 ```bash
 python -m venv venv
 venv\Scripts\activate
-pip install -r requiremetns.txt
+pip install -r requirements.txt
 playwright install
 
 ```
