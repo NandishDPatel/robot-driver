@@ -17,7 +17,7 @@ This project is a Python automation service that logs into [AutomationExercise](
 
 ## Requirements
 
-- Python 3.11 or higher  
+- Python 3.11 (make sure of this as python3.12 will throw error)  
 - `pip` (Python package manager)  
 - Playwright (for browser automation)  
 
