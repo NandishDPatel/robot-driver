@@ -40,7 +40,7 @@ cd robot-driver
 ### 2. Create a virtual environment
 
 ```bash
-python -m venv venv
+python3.11 -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 playwright install
