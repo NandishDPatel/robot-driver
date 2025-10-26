@@ -49,7 +49,7 @@ playwright install
 
 ### 3. Running API
 ```bash
-uvicorn main:app --reload
+uvicorn main:app --reload --port 8000
 ```
 
 ### 4. For checking if the api is running or not
