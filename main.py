@@ -1,98 +1,76 @@
 import asyncio
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+import re
+from playwright.async_api import async_playwright
 
+async def run_autonomy(goal: str, headless: bool = True, dry_run: bool = False):
+    print(f"Starting autonomous run for goal: {goal}\n")
 
-# CONFIG: Credentials and product to search
-USERNAME = "nanlogx@gmail.co"   # Replace with valid AutomationExercise email
-PASSWORD = "Login@12345"          # Replace with valid password
-SEARCH_PRODUCT = "dress"           # Product to search
-BASE_URL = "https://automationexercise.com" 
+    # Extract search keyword from goal
+    match = re.search(r"(?:find|buy|search for)\s+(.*)", goal, re.IGNORECASE)
+    if not match:
+        print("❌ Could not understand what to search for.")
+        return
+    product_name = match.group(1).strip().replace(".", "")
+    print(f"🧠 Interpreted product to search for: '{product_name}'\n")
 
-class LoginHandler:
-    def __init__(self, page):
-        self.page = page
+    # Extract URL if provided
+    url_match = re.search(r"(https?://[^\s]+)", goal)
+    url = url_match.group(1) if url_match else "https://automationexercise.com"
+    print(f"🌐 Using site: {url}\n")
 
-    async def login(self, username, password):
-        print("Navigating to login page...\n")
-        await self.page.goto(f"{BASE_URL}/login", timeout=5000)
+    if dry_run:
+        print(f"[DRY RUN] Would search for '{product_name}' on {url}")
+        return
 
-        print("Filling login credentials...")
-        await self.page.fill('input[data-qa="login-email"]', username)
-        await self.page.fill('input[data-qa="login-password"]', password)
-        await self.page.click('button[data-qa="login-button"]')
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=headless)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-        try:
-            await self.page.wait_for_selector("a[href='/logout']", timeout=5000)
-            print("Logged in successfully!\n")
-            return True
-        except PlaywrightTimeoutError:
-            print("Login failed: Invalid username or password\n")
-            return False
+        await page.goto(url)
+        await page.wait_for_load_state("networkidle")
 
-class ProductSearcher:
-    def __init__(self, page):
-        self.page = page
-
-    async def search_product(self, product_name):
-        print("Navigating to Products page...")
-        await self.page.goto(f"{BASE_URL}/products", timeout=30000)
-
-        print(f"Searching for product: {product_name}")
-        try:
-            await self.page.fill('input#search_product', product_name)
-            await self.page.click('button#submit_search')
-        except PlaywrightTimeoutError:
-            print("Search input/button not found, cannot search product.")
-            return False
-
-        try:
-            await self.page.wait_for_selector(".features_items .productinfo, .product-image-wrapper", timeout=3000)
-        except PlaywrightTimeoutError:
-            print(f"\nProduct '{product_name}' not found.")
-            return False
-
-        products = await self.page.query_selector_all(".features_items .productinfo, .product-image-wrapper")
-        for prod in products:
-            text = (await prod.inner_text()) or ""
-            if product_name.lower() in text.lower():
-                name_el = await prod.query_selector("h2, h3, h4, p")
-                price_el = await prod.query_selector(".product-price, .price, h2:has-text('Rs'), .productinfo h2")
-                desc_el = await prod.query_selector("p")
-
-                name = (await name_el.inner_text()).strip() if name_el else "Unknown"
-                price = (await price_el.inner_text()).strip() if price_el else "Unknown"
-                desc = (await desc_el.inner_text()).strip() if desc_el else "No description"
-
-                print(f"\nProduct {SEARCH_PRODUCT} found!\n")
-                print("First product details:")
-                print(f"Name: {name}")
-                print(f"Price: {price}")
-                print(f"Description: {desc}")
-                return True
-
-        print(f"Product '{product_name}' not found in results.")
-        return False
-
-class RobotDriver:
-    async def run(self, username, password, product):
-        print("Starting AutomationExercise Robot Driver\n")
-
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False, slow_mo=100)
-            page = await browser.new_page()
-
-            login_handler = LoginHandler(page)
-            logged_in = await login_handler.login(username, password)
-
-            if not logged_in:
-                await browser.close()
-                return
-
-            searcher = ProductSearcher(page)
-            await searcher.search_product(product)
-
+        # Try to locate the search bar
+        search_box = await page.query_selector("input[name='search']")  # adjust selector
+        if not search_box:
+            print("❌ Search bar not found on this site.")
             await browser.close()
+            return
 
+        await search_box.fill(product_name)
+        await page.keyboard.press("Enter")
+        await page.wait_for_load_state("networkidle")
+
+        # Try to detect products
+        product_elements = await page.query_selector_all(".productinfo.text-center")
+        if not product_elements:
+            print(f"❌ Product '{product_name}' doesn't exist on this site.")
+            await browser.close()
+            return
+
+        print(f"✅ Found {len(product_elements)} results for '{product_name}'.\n")
+
+        # Example: extract product names and prices
+        products = []
+        for product in product_elements:
+            name = await product.query_selector_eval("p", "el => el.innerText") if await product.query_selector("p") else "Unnamed"
+            price = await product.query_selector_eval("h2", "el => el.innerText") if await product.query_selector("h2") else "N/A"
+            products.append({"name": name, "price": price})
+
+        print("🛍️ Products found:")
+        for p in products:
+            print(p)
+
+        await browser.close()
+
+# Example usage
 if __name__ == "__main__":
-    driver = RobotDriver()
-    asyncio.run(driver.run(USERNAME, PASSWORD, SEARCH_PRODUCT))
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("goal", type=str, help="The goal or task description")
+    parser.add_argument("--headless", action="store_true", help="Run browser in headless mode")
+    parser.add_argument("--dry-run", action="store_true", help="Simulate plan without browser actions")
+    args = parser.parse_args()
+
+    asyncio.run(run_autonomy(args.goal, headless=args.headless, dry_run=args.dry_run))
